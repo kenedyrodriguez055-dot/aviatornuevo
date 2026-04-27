@@ -10,7 +10,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "8772666643:AAEfEnWC8dX4Nt5bRGXclvV8N4hLR09T
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-1003906962727")
 URL_API = os.getenv("API_URL", "https://aviator-round-production.up.railway.app/api/aviator/rounds/1?limit=30")
 
-bot = telebot.TeleBot(token=TOKEN)
+bot = telebot.TeleBot(token=TOKEN, parse_mode='MARKDOWN')
 
 def enviar_telegram(texto):
     try:
@@ -107,6 +107,7 @@ historial        = []     # multiplicadores de rondas terminadas
 trades           = []     # ["win"|"loss"] por ciclo completo
 last_trade_index = -999   # índice de la última entrada
 gale_pendiente   = False  # True cuando E1 perdió y espera próxima señal
+history_signals  = []     # Historial de las últimas 10 señales para el resumen
 
 
 # =============================================================================
@@ -151,23 +152,48 @@ def on_entrada_terminada(multiplicador: float, era_gale: bool):
     multiplicador : crash de esa ronda
     era_gale      : True si fue una entrada SEÑAL_GALE (E1+E2 juntos)
     """
-    global gale_pendiente
+    global gale_pendiente, history_signals
 
     if era_gale:
         # Ciclo completo con gale
         if multiplicador >= CUOTA:
             trades.append("win")
+            history_signals.append({'status': 'win', 'era_gale': True, 'res': multiplicador})
         else:
             trades.append("loss")   # ← LÍNEA CRÍTICA — no omitir
+            history_signals.append({'status': 'loss', 'era_gale': True, 'res': multiplicador})
         gale_pendiente = False
 
     else:
         # Solo E1
         if multiplicador >= CUOTA:
             trades.append("win")
+            history_signals.append({'status': 'win', 'era_gale': False, 'res': multiplicador})
         else:
             gale_pendiente = True   # E1 perdió → esperar próxima señal
             # NO agregar a trades todavía
+
+
+# =============================================================================
+# MENSAJES ADICIONALES
+# =============================================================================
+
+def msg_resumen():
+    global history_signals
+    if not history_signals: return
+    msg = "📊 *RESUMEN DE ÚLTIMAS 10 SEÑALES*\n\n"
+    wins = 0
+    losses = 0
+    for s in history_signals:
+        icon = "✅" if s['status'] == 'win' else "❌"
+        g_text = "Directo" if not s['era_gale'] else "GALE"
+        msg += f"{icon} Multiplicador: {s['res']:.2f}x ({g_text})\n"
+        if s['status'] == 'win': wins += 1
+        else: losses += 1
+    
+    msg += f"\n📈 *Resultado:* {wins}W - {losses}L"
+    enviar_telegram(msg)
+    history_signals = [] # Resetear tras enviar resumen
 
 
 # =============================================================================
@@ -175,7 +201,7 @@ def on_entrada_terminada(multiplicador: float, era_gale: bool):
 # =============================================================================
 
 def ejecutar_bot():
-    global last_trade_index, historial, trades, gale_pendiente
+    global last_trade_index, historial, trades, gale_pendiente, history_signals
     
     print("🚀 Bot Aviator Gale Inteligente v2.2 Iniciado...")
     print(f"📡 API: {URL_API}")
@@ -230,6 +256,10 @@ def ejecutar_bot():
                 else:
                     enviar_telegram(f"❌ PERDIDO — Crash {ronda_val:.2f}x")
                 apuesta_activa = None
+                
+            # Reporte de resumen cada 10 señales
+            if len(history_signals) >= 10:
+                msg_resumen()
                 
             # 2. Registrar la ronda terminada en el historial
             on_ronda_terminada(ronda_val)
