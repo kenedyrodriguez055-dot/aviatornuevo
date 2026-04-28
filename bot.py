@@ -181,19 +181,13 @@ def on_entrada_terminada(multiplicador: float, era_gale: bool):
 def msg_resumen():
     global history_signals
     if not history_signals: return
-    msg = "📊 *RESUMEN DE ÚLTIMAS 10 SEÑALES*\n\n"
-    wins = 0
-    losses = 0
+    msg = "📊 *RESUMEN DE OPERACIONES*\n\n"
     for s in history_signals:
         icon = "✅" if s['status'] == 'win' else "❌"
-        g_text = "Directo" if not s['era_gale'] else "GALE"
+        g_text = "Directo" if not s['era_gale'] else "G1"
         msg += f"{icon} Multiplicador: {s['res']:.2f}x ({g_text})\n"
-        if s['status'] == 'win': wins += 1
-        else: losses += 1
-    
-    msg += f"\n📈 *Resultado:* {wins}W - {losses}L"
     enviar_telegram(msg)
-    history_signals = [] # Resetear tras enviar resumen
+    history_signals = []
 
 
 # =============================================================================
@@ -244,17 +238,25 @@ def ejecutar_bot():
             if apuesta_activa == "E1":
                 on_entrada_terminada(ronda_val, era_gale=False)
                 if ronda_val >= CUOTA:
-                    enviar_telegram(f"✅ GANADO — Crash {ronda_val:.2f}x")
+                    msg = f"✅ *¡WIN {ronda_val:.2f}x!*\n"
+                    msg += "Estrategia aplicada con éxito."
+                    enviar_telegram(msg)
                 else:
-                    enviar_telegram("⏳ E1 PERDIÓ — Gale en próxima señal")
+                    msg = "⏳ *E1 PERDIÓ*\n"
+                    msg += "Esperando próxima señal para aplicar Gale."
+                    enviar_telegram(msg)
                 apuesta_activa = None
                 
             elif apuesta_activa == "GALE":
                 on_entrada_terminada(ronda_val, era_gale=True)
                 if ronda_val >= CUOTA:
-                    enviar_telegram(f"✅ GALE GANADO — Crash {ronda_val:.2f}x")
+                    msg = f"✅ *¡WIN {ronda_val:.2f}x! (G1)*\n"
+                    msg += "Estrategia aplicada con éxito."
+                    enviar_telegram(msg)
                 else:
-                    enviar_telegram(f"❌ PERDIDO — Crash {ronda_val:.2f}x")
+                    msg = f"❌ *CICLO CERRADO {ronda_val:.2f}x*\n"
+                    msg += "Gale fallido. Seguimos analizando el mercado."
+                    enviar_telegram(msg)
                 apuesta_activa = None
                 
             # Reporte de resumen cada 10 señales
@@ -267,10 +269,18 @@ def ejecutar_bot():
             # 3. Evaluar si se debe entrar en la ronda que viene
             decision = on_ronda_por_comenzar()
             if decision == "SEÑAL":
-                enviar_telegram("🟢 SEÑAL — Cashout 1.70x")
+                msg = "🚀 *ENTRADA DETECTADA*\n\n"
+                msg += f"🎯 Punto de Retiro: *{CUOTA:.2f}x*\n"
+                msg += "💰 Inversión sugerida: *1.0%*\n\n"
+                msg += "⚠️ *Ejecutar en la siguiente ronda*"
+                enviar_telegram(msg)
                 apuesta_activa = "E1"
             elif decision == "SEÑAL_GALE":
-                enviar_telegram("⚡ SEÑAL + GALE — Cashout 1.70x")
+                msg = "⚠️ *MARTINGALA 1*\n\n"
+                msg += "El avión se fue antes. Entramos de nuevo.\n"
+                msg += "💰 Inversión: *2.7%*\n"
+                msg += f"🎯 Retiro: *{CUOTA:.2f}x*"
+                enviar_telegram(msg)
                 apuesta_activa = "GALE"
                 
         except Exception as e:
